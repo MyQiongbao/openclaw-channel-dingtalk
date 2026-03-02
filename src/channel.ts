@@ -298,6 +298,34 @@ export const dingtalkPlugin: DingTalkChannelPlugin = {
         keepAlive: !useConnectionManager,
       });
 
+      if (config.debug) {
+        client.on("debug", (event: unknown) => {
+          const debugEvent =
+            typeof event === "object" && event !== null
+              ? (event as {
+                  phase?: string;
+                  messageId?: unknown;
+                  topic?: unknown;
+                  connectionId?: unknown;
+                })
+              : undefined;
+          const phase = typeof debugEvent?.phase === "string" ? debugEvent.phase : "unknown";
+          if (
+            phase === "inbound-received" ||
+            phase === "event-dispatch" ||
+            phase === "event-ack-send" ||
+            phase === "inbound-parse-error" ||
+            phase === "socket-close" ||
+            phase === "socket-error" ||
+            phase === "heartbeat-timeout-terminate"
+          ) {
+            ctx.log?.debug?.(
+              `[${account.accountId}][SDK] phase=${phase} messageId=${String(debugEvent?.messageId ?? "")} topic=${String(debugEvent?.topic ?? "")} connectionId=${String(debugEvent?.connectionId ?? "")}`,
+            );
+          }
+        });
+      }
+
       (client as any).config.autoReconnect = !useConnectionManager;
 
       client.registerCallbackListener(TOPIC_ROBOT, async (res: any) => {

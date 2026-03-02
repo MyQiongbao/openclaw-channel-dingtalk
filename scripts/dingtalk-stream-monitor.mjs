@@ -135,6 +135,11 @@ function createState(startMs) {
     sdkHeartbeatLog: 0,
     sdkKeepaliveLog: 0,
     sdkPingLog: 0,
+    sdkDebugEvent: 0,
+    sdkInboundReceived: 0,
+    sdkEventDispatch: 0,
+    sdkEventAckSend: 0,
+    sdkInboundParseError: 0,
     callbackReceived: 0,
     callbackAcked: 0,
     callbackParseError: 0,
@@ -147,7 +152,20 @@ function createState(startMs) {
     seenMsgIds: new Set(),
     lastSocketCloseAt: 0,
     lastSocketErrorAt: 0,
+    sdkPhaseCounts: new Map(),
   };
+}
+
+function incrementPhaseCounter(state, phase) {
+  const current = state.sdkPhaseCounts.get(phase) || 0;
+  state.sdkPhaseCounts.set(phase, current + 1);
+}
+
+function topPhaseCounts(state, topN = 8) {
+  return [...state.sdkPhaseCounts.entries()]
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, topN)
+    .map(([phase, count]) => ({ phase, count }));
 }
 
 function logLine(level, message, extra) {
@@ -196,16 +214,22 @@ function printSummary(state) {
     sdkHeartbeatLog: state.sdkHeartbeatLog,
     sdkKeepaliveLog: state.sdkKeepaliveLog,
     sdkPingLog: state.sdkPingLog,
+    sdkDebugEvent: state.sdkDebugEvent,
+    sdkInboundReceived: state.sdkInboundReceived,
+    sdkEventDispatch: state.sdkEventDispatch,
+    sdkEventAckSend: state.sdkEventAckSend,
+    sdkInboundParseError: state.sdkInboundParseError,
     probeOk: state.probeOk,
     probeFail: state.probeFail,
     silentSec,
+    sdkTopPhases: topPhaseCounts(state),
   });
 }
 
 function printHeuristicConclusion(state) {
   const hasTransportInstability = state.socketClose > 0 || state.socketError > 0;
   const hasSdkHeartbeat = state.sdkHeartbeatLog > 0 || state.sdkKeepaliveLog > 0;
-  const hasCallbackFlow = state.callbackReceived > 0;
+  const hasCallbackFlow = state.callbackReceived > 0 || state.sdkEventDispatch > 0;
   const apiProbeBad = state.probeFail > state.probeOk;
 
   let conclusion = "inconclusive";
@@ -272,6 +296,44 @@ async function main() {
     }
     originalPrintDebug(msg);
   };
+
+  client.on("debug", (event) => {
+    if (!event || typeof event !== "object") {
+      return;
+    }
+
+    const phase = typeof event.phase === "string" ? event.phase : "unknown";
+    state.sdkDebugEvent += 1;
+    incrementPhaseCounter(state, phase);
+
+    if (phase === "inbound-received") {
+      state.sdkInboundReceived += 1;
+    } else if (phase === "event-dispatch") {
+      state.sdkEventDispatch += 1;
+    } else if (phase === "event-ack-send") {
+      state.sdkEventAckSend += 1;
+    } else if (phase === "inbound-parse-error") {
+      state.sdkInboundParseError += 1;
+    }
+
+    if (
+      phase === "inbound-parse-error" ||
+      phase === "socket-error" ||
+      phase === "socket-close" ||
+      phase === "heartbeat-timeout-terminate"
+    ) {
+      logLine("warn", "sdk debug event", {
+        phase,
+        messageId: event.messageId,
+        topic: event.topic,
+        type: event.type,
+        connectionId: event.connectionId,
+        code: event.code,
+        reason: event.reason,
+        message: event.message,
+      });
+    }
+  });
 
   let observedSocket = null;
   const bindSocketEvents = () => {
