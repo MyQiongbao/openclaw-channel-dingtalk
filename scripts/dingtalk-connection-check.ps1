@@ -3,6 +3,8 @@ param(
     [string]$ClientSecret = "",
     [string]$Config = "",
     [string]$AccountId = "",
+    [int]$TimeoutSeconds = 10,
+    [switch]$Json,
     [switch]$Help
 )
 
@@ -20,7 +22,12 @@ Options:
   -ClientSecret  Explicit DingTalk client secret
   -Config        Path to openclaw.json (default: ~/.openclaw/openclaw.json)
   -AccountId     Optional DingTalk account ID under channels.dingtalk.accounts
+  -TimeoutSeconds  Request timeout seconds (default: 10)
+  -Json            Pretty-print sanitized JSON response
   -Help          Show this help
+Notes:
+- The script inherits proxy settings from environment variables: HTTP_PROXY / HTTPS_PROXY / NO_PROXY.
+- For corporate environments, ensure WebSocket/WSS proxies support Upgrade semantics when later testing stream connections.
 "@
 }
 
@@ -142,7 +149,7 @@ $payload = @{
 $statusCode = 0
 $bodyObject = $null
 try {
-    $response = Invoke-WebRequest -Uri "https://api.dingtalk.com/v1.0/gateway/connections/open" -Method POST -ContentType "application/json" -Headers @{ Accept = "application/json" } -Body $payload
+    $response = Invoke-WebRequest -Uri "https://api.dingtalk.com/v1.0/gateway/connections/open" -Method POST -ContentType "application/json" -Headers @{ Accept = "application/json" } -Body $payload -TimeoutSec $TimeoutSeconds -ErrorAction Stop
     $statusCode = [int]$response.StatusCode
     if ($response.Content) {
         $bodyObject = $response.Content | ConvertFrom-Json
@@ -174,7 +181,11 @@ if ($Config) {
 Write-Output "account_id=$AccountId"
 Write-Output "client_id=$(Mask-Value $ClientId)"
 Write-Output "http_status=$statusCode"
-Write-Output ("response={0}" -f (($sanitizedBody | ConvertTo-Json -Depth 10 -Compress)))
+if ($Json) {
+    Write-Output ("response_json={0}" -f (($sanitizedBody | ConvertTo-Json -Depth 10)))
+} else {
+    Write-Output ("response={0}" -f (($sanitizedBody | ConvertTo-Json -Depth 10 -Compress)))
+}
 
 if ($statusCode -eq 200) {
     if ($bodyObject.endpoint) {

@@ -1,12 +1,14 @@
 #!/usr/bin/env bash
 
-set -u
+set -euo pipefail
 
 DEFAULT_CONFIG="$HOME/.openclaw/openclaw.json"
 CLIENT_ID=""
 CLIENT_SECRET=""
 CONFIG_PATH=""
 ACCOUNT_ID=""
+TIMEOUT="10"
+JSON_OUTPUT="false"
 
 usage() {
     cat <<'EOF'
@@ -20,12 +22,18 @@ Options:
   --client-secret   Explicit DingTalk client secret
   --config          Path to openclaw.json (default: ~/.openclaw/openclaw.json)
   --account-id      Optional DingTalk account ID under channels.dingtalk.accounts
+  --timeout         Request timeout seconds (default: 10)
+  --json            Pretty-print sanitized JSON if jq is available
   --help            Show this help
 
 Resolution order:
   1. explicit --client-id/--client-secret
   2. --config path
   3. default ~/.openclaw/openclaw.json
+
+Notes:
+- The script inherits proxy settings from environment variables: HTTP_PROXY / HTTPS_PROXY / NO_PROXY.
+- For corporate environments, ensure WebSocket/WSS proxies support Upgrade semantics when later testing stream connections.
 EOF
 }
 
@@ -167,6 +175,14 @@ while [ "$#" -gt 0 ]; do
             ACCOUNT_ID="${2:-}"
             shift 2
             ;;
+        --timeout)
+            TIMEOUT="${2:-10}"
+            shift 2
+            ;;
+        --json)
+            JSON_OUTPUT="true"
+            shift 1
+            ;;
         --help|-h)
             usage
             exit 0
@@ -239,6 +255,7 @@ HTTP_STATUS="$(curl -sS -o "$BODY_FILE" -w "%{http_code}" \
     -X POST "https://api.dingtalk.com/v1.0/gateway/connections/open" \
     -H "Content-Type: application/json" \
     -H "Accept: application/json" \
+    --max-time "$TIMEOUT" \
     --data "$PAYLOAD" 2>/dev/null || true)"
 
 RAW_BODY="$(cat "$BODY_FILE")"
@@ -252,7 +269,13 @@ fi
 printf 'account_id=%s\n' "$ACCOUNT_ID"
 printf 'client_id=%s\n' "$(mask_value "$CLIENT_ID")"
 printf 'http_status=%s\n' "${HTTP_STATUS:-000}"
-printf 'response=%s\n' "$SANITIZED_BODY"
+if [ "$JSON_OUTPUT" = "true" ] && command -v jq >/dev/null 2>&1; then
+    # Pretty-print sanitized JSON if possible
+    PRETTY="$(printf '%s' "$SANITIZED_BODY" | jq '.')" || PRETTY="$SANITIZED_BODY"
+    printf 'response_json=%s\n' "$PRETTY"
+else
+    printf 'response=%s\n' "$SANITIZED_BODY"
+fi
 
 if [ "$HTTP_STATUS" = "200" ]; then
     ENDPOINT="$(printf '%s' "$RAW_BODY" | read_json_field endpoint)"

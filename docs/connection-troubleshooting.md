@@ -146,6 +146,12 @@ Check next:
 - Node runtime environment variables like `HTTP_PROXY`, `HTTPS_PROXY`, `NO_PROXY`
 - whether the plugin process and the shell script are truly running on the same machine / container / network path
 
+Example websocket-stage log snippet:
+
+```text
+[main] Failed to establish connection: Unexpected server response: 400 [DingTalk][ConnectionError][connect.websocket] endpoint=wss://wss-open-connection.dingtalk.com:443/connect Likely websocket/proxy/WSS issue after connections/open succeeded See docs/connection-troubleshooting.md or run scripts/dingtalk-connection-check.*
+```
+
 ### Case 3: no HTTP status / transport failure
 
 If the script cannot produce a real HTTP status, investigate:
@@ -183,6 +189,10 @@ If you see `connect.websocket` together with an endpoint like `wss://wss-open-co
 - SSL MITM / security products
 - whether the plugin process is running behind a different proxy path than your manual shell test
 
+Required endpoints to reach:
+- `https://api.dingtalk.com:443` (open stage)
+- `wss://wss-open-connection.dingtalk.com:443` (websocket stage)
+
 If you open an issue, include:
 
 - the plugin startup error line
@@ -195,3 +205,6 @@ If you open an issue, include:
 - `scripts/dingtalk-connection-check.ps1`
 - `src/connection-manager.ts`
 - `README.md`
+Proxy notes:
+- Scripts inherit HTTP_PROXY / HTTPS_PROXY / NO_PROXY from your environment.
+- For WebSocket (WSS) testing, ensure your proxy/gateway supports Upgrade and TLS pass-through.
