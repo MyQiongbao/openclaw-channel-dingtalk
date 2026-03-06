@@ -630,7 +630,9 @@ await dingtalkPlugin.outbound.sendMedia({
 - Windows PowerShell: `pwsh -File scripts/dingtalk-connection-check.ps1 -Config ~/.openclaw/openclaw.json`
   - 旧版 Windows 可使用：`powershell.exe -File scripts/dingtalk-connection-check.ps1 -Config $env:USERPROFILE\.openclaw\openclaw.json`
 
-完整排障流程见 `docs/connection-troubleshooting.md`。
+完整排障流程：
+- 英文版：`docs/connection-troubleshooting.md`
+- 中文版：`docs/connection-troubleshooting.zh-CN.md`
 
 如果新日志里出现 `connect.open` 或 `connect.websocket`，也可以直接按文档中的阶段说明来判断：前者优先查钉钉应用配置，后者优先查 WSS / 代理 / 企业网关。
 
