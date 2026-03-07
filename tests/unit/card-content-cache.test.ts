@@ -9,7 +9,6 @@ import {
     findCardContent,
 } from '../../src/card-service';
 import { resolveNamespacePath } from '../../src/persistence-store';
-
 describe('card-content-cache', () => {
     let tempDir = '';
     let storePath = '';
@@ -83,7 +82,6 @@ describe('card-content-cache', () => {
 
         expect(findCardContent('default', 'conv_persisted', 1000500, storePath)).toBe('持久化内容');
     });
-
     it('单聊和群聊独立缓存', () => {
         cacheCardContent('default', 'dm_conv', '单聊内容', 1000000);
         cacheCardContent('default', 'group_conv', '群聊内容', 2000000);
