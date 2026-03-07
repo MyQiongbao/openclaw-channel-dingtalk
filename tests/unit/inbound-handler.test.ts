@@ -12,6 +12,8 @@ const shared = vi.hoisted(() => ({
     formatContentForCardMock: vi.fn((s: string) => s),
     isCardInTerminalStateMock: vi.fn(),
     acquireSessionLockMock: vi.fn(),
+    appendQuoteJournalEntryMock: vi.fn(),
+    resolveQuotedMessageByIdMock: vi.fn(),
 }));
 
 vi.mock('axios', () => ({
@@ -49,6 +51,11 @@ vi.mock('../../src/card-service', () => ({
 
 vi.mock('../../src/session-lock', () => ({
     acquireSessionLock: shared.acquireSessionLockMock,
+}));
+
+vi.mock('../../src/quote-journal', () => ({
+    appendQuoteJournalEntry: shared.appendQuoteJournalEntryMock,
+    resolveQuotedMessageById: shared.resolveQuotedMessageByIdMock,
 }));
 
 import {
@@ -106,6 +113,10 @@ describe('inbound-handler', () => {
 
         shared.acquireSessionLockMock.mockReset();
         shared.acquireSessionLockMock.mockResolvedValue(vi.fn());
+        shared.appendQuoteJournalEntryMock.mockReset();
+        shared.appendQuoteJournalEntryMock.mockResolvedValue(undefined);
+        shared.resolveQuotedMessageByIdMock.mockReset();
+        shared.resolveQuotedMessageByIdMock.mockResolvedValue(null);
 
         shared.getRuntimeMock.mockReturnValue(buildRuntime());
         shared.extractMessageContentMock.mockReturnValue({ text: 'hello', messageType: 'text' });
@@ -277,6 +288,47 @@ describe('inbound-handler', () => {
         expect(shared.sendMessageMock).toHaveBeenCalled();
         const cardSends = shared.sendMessageMock.mock.calls.filter((call: any[]) => call[3]?.card);
         expect(cardSends.length).toBeGreaterThan(0);
+        expect(shared.appendQuoteJournalEntryMock).toHaveBeenCalled();
+    });
+
+    it('appends inbound quote journal entry with store/account/session context', async () => {
+        const runtime = buildRuntime();
+        runtime.channel.session.resolveStorePath = vi
+            .fn()
+            .mockReturnValueOnce('/tmp/agent-store.json')
+            .mockReturnValueOnce('/tmp/account-store.json');
+        shared.getRuntimeMock.mockReturnValueOnce(runtime);
+
+        await handleDingTalkMessage({
+            cfg: {},
+            accountId: 'main',
+            sessionWebhook: 'https://session.webhook',
+            log: undefined,
+            dingtalkConfig: { dmPolicy: 'open', messageType: 'markdown' } as any,
+            data: {
+                msgId: 'm_journal_1',
+                msgtype: 'text',
+                text: { content: 'hello' },
+                conversationType: '1',
+                conversationId: 'cid_ok',
+                senderId: 'user_1',
+                chatbotUserId: 'bot_1',
+                sessionWebhook: 'https://session.webhook',
+                createAt: 1700000000000,
+            },
+        } as any);
+
+        expect(shared.appendQuoteJournalEntryMock).toHaveBeenCalledWith(
+            expect.objectContaining({
+                storePath: '/tmp/agent-store.json',
+                accountId: 'main',
+                conversationId: 'cid_ok',
+                msgId: 'm_journal_1',
+                messageType: 'text',
+                text: 'hello',
+                createdAt: 1700000000000,
+            }),
+        );
     });
 
     it('handleDingTalkMessage runs non-card flow and sends thinking + final outputs', async () => {

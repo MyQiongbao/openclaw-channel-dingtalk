@@ -25,6 +25,7 @@ import { findCardContent } from "./card-service";
 import { cacheInboundDownloadCode, getCachedDownloadCode } from "./quoted-msg-cache";
 import { downloadGroupFile, getUnionIdByStaffId, resolveQuotedFile } from "./quoted-file-service";
 import { formatDingTalkErrorPayloadLog, maskSensitiveData } from "./utils";
+import { appendQuoteJournalEntry, resolveQuotedMessageById } from "./quote-journal";
 
 const DEFAULT_PROACTIVE_HINT_COOLDOWN_HOURS = 24;
 const DEFAULT_THINKING_MESSAGE = "🤔 思考中，请稍候...";
@@ -195,7 +196,7 @@ export async function handleDingTalkMessage(params: HandleDingTalkMessageParams)
     return;
   }
 
-  const content = extractMessageContent(data);
+  let content = extractMessageContent(data);
   if (!content.text) {
     return;
   }
@@ -360,6 +361,37 @@ export async function handleDingTalkMessage(params: HandleDingTalkMessageParams)
         `[DingTalk] Failed to create AI card: ${err.message}, fallback to text/markdown.`,
       );
     }
+  }
+
+  // Journal-based quoted text resolution when only originalMsgId is present
+  if (data.text?.isReplyMsg && data.originalMsgId && !content.text.includes("[引用消息:")) {
+    try {
+      const quoted = await resolveQuotedMessageById({
+        storePath,
+        accountId,
+        conversationId: groupId,
+        originalMsgId: data.originalMsgId,
+      });
+      if (quoted?.text?.trim()) {
+        content = { ...content, text: `[引用消息: "${quoted.text.trim()}"]\n\n${content.text}` };
+      }
+    } catch (err) {
+      log?.debug?.(`[DingTalk] Quote journal lookup failed: ${String(err)}`);
+    }
+  }
+
+  try {
+    await appendQuoteJournalEntry({
+      storePath,
+      accountId,
+      conversationId: groupId,
+      msgId: data.msgId,
+      messageType: content.messageType,
+      text: content.text,
+      createdAt: data.createAt,
+    });
+  } catch (err) {
+    log?.debug?.(`[DingTalk] Quote journal append failed: ${String(err)}`);
   }
 
   let mediaPath: string | undefined;
@@ -602,13 +634,13 @@ export async function handleDingTalkMessage(params: HandleDingTalkMessageParams)
                 );
                 const toolText = formatContentForCard(textToSend, "tool");
                 if (toolText) {
-                  const sendResult = await sendMessage(dingtalkConfig, to, toolText, {
-                    sessionWebhook,
-                    atUserId: !isDirect ? senderId : null,
-                    log,
-                    card: currentAICard,
-                    cardUpdateMode: "append",
-                  });
+              const sendResult = await sendMessage(dingtalkConfig, to, toolText, {
+                sessionWebhook,
+                atUserId: !isDirect ? senderId : null,
+                log,
+                card: currentAICard,
+                cardUpdateMode: "append",
+              });
                   if (!sendResult.ok) {
                     throw new Error(sendResult.error || "Tool stream send failed");
                   }
