@@ -784,6 +784,35 @@ describe('inbound-handler', () => {
         expect(shared.finishAICardMock).toHaveBeenCalledWith(card, '✅ Done', undefined);
     });
 
+    it('handleDingTalkMessage falls back to markdown sends when createAICard returns null', async () => {
+        shared.createAICardMock.mockResolvedValueOnce(null);
+
+        await handleDingTalkMessage({
+            cfg: {},
+            accountId: 'main',
+            sessionWebhook: 'https://session.webhook',
+            log: undefined,
+            dingtalkConfig: { dmPolicy: 'open', messageType: 'card', showThinking: false } as any,
+            data: {
+                msgId: 'm6_card_degrade',
+                msgtype: 'text',
+                text: { content: 'hello' },
+                conversationType: '1',
+                conversationId: 'cid_ok',
+                senderId: 'user_1',
+                chatbotUserId: 'bot_1',
+                sessionWebhook: 'https://session.webhook',
+                createAt: Date.now(),
+            },
+        } as any);
+
+        expect(shared.createAICardMock).toHaveBeenCalledTimes(1);
+        expect(shared.finishAICardMock).not.toHaveBeenCalled();
+        expect(shared.sendMessageMock).toHaveBeenCalled();
+        const cardSends = shared.sendMessageMock.mock.calls.filter((call: any[]) => call[3]?.card);
+        expect(cardSends).toHaveLength(0);
+    });
+
     it('handleDingTalkMessage finalizes card using tool stream content when no final text exists', async () => {
         const runtime = buildRuntime();
         runtime.channel.reply.dispatchReplyWithBufferedBlockDispatcher = vi

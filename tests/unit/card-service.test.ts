@@ -149,6 +149,24 @@ describe('card-service', () => {
         expect(getAICardDegradeState('main')?.reason).toContain('card.create:429');
     });
 
+    it('createAICard activates degrade for normalized access denied variants', async () => {
+        mockedAxios.post.mockRejectedValueOnce({
+            response: { status: 400, data: { message: 'Forbidden_AccessDenied' } },
+            message: 'Forbidden_AccessDenied',
+        });
+
+        const card = await createAICard(
+            { clientId: 'id', clientSecret: 'sec', cardTemplateId: 'tmpl.schema', aicardDegradeMs: 120000 } as any,
+            'cidA1B2C3',
+            undefined,
+            { accountId: 'main' }
+        );
+
+        expect(card).toBeNull();
+        expect(isAICardDegraded('main')).toBe(true);
+        expect(getAICardDegradeState('main')?.reason).toContain('card.create:400');
+    });
+
     it('createAICard clears degrade after a later success', async () => {
         activateAICardDegrade('main', 'card.create:429', { aicardDegradeMs: 120000 } as any);
         clearAICardDegrade('main');

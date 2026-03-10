@@ -34,13 +34,21 @@ function getAICardDegradeMs(config?: DingTalkConfig): number {
   return AICARD_DEGRADE_DEFAULT_MS;
 }
 
+function normalizeDegradeErrorMessage(value: string): string {
+  return value
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "");
+}
+
 function shouldTriggerAICardDegrade(err: unknown): boolean {
   const maybeErr = err as {
     response?: { status?: number; data?: { message?: string } };
     message?: string;
   };
   const status = maybeErr.response?.status;
-  const msg = String(maybeErr.response?.data?.message || maybeErr.message || "").toLowerCase();
+  const msg = normalizeDegradeErrorMessage(
+    String(maybeErr.response?.data?.message || maybeErr.message || ""),
+  );
   if (status === 403 || status === 429) {
     return true;
   }
@@ -49,13 +57,13 @@ function shouldTriggerAICardDegrade(err: unknown): boolean {
   }
   return [
     "ipnotinwhitelist",
-    "forbidden.accessdenied",
+    "forbiddenaccessdenied",
     "timeout",
     "etimedout",
     "econnreset",
-    "eai_again",
-    "socket hang up",
-    "bad gateway",
+    "eaiagain",
+    "sockethangup",
+    "badgateway",
   ].some((keyword) => msg.includes(keyword));
 }
 

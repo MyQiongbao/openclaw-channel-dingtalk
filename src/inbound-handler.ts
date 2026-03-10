@@ -336,7 +336,7 @@ export async function handleDingTalkMessage(params: HandleDingTalkMessageParams)
   // 3) Select response mode (card vs markdown).
   // Card creation runs BEFORE media download so the user sees immediate visual
   // feedback while large files are still being downloaded.
-  const useCardMode = dingtalkConfig.messageType === "card";
+  let useCardMode = dingtalkConfig.messageType === "card";
   let currentAICard = undefined;
   let lastCardContent = "";
 
@@ -352,11 +352,13 @@ export async function handleDingTalkMessage(params: HandleDingTalkMessageParams)
       if (aiCard) {
         currentAICard = aiCard;
       } else {
+        useCardMode = false;
         log?.warn?.(
           "[DingTalk] Failed to create AI card (returned null), fallback to text/markdown.",
         );
       }
     } catch (err: any) {
+      useCardMode = false;
       log?.warn?.(
         `[DingTalk] Failed to create AI card: ${err.message}, fallback to text/markdown.`,
       );
