@@ -71,7 +71,25 @@ describe('send-service media branches', () => {
         );
 
         const req = mockedAxios.mock.calls[0]?.[0] as any;
-        expect(req.data).toEqual({ msgtype: 'text', text: { content: 'fallback text' } });
+        expect(req.data).toEqual({
+            msgtype: 'text',
+            text: { content: 'fallback text\n\n📎 媒体发送失败，兜底链接/路径：/tmp/a.png' },
+        });
+    });
+
+    it('sendBySession bypasses proxy when configured', async () => {
+        mockedUploadMedia.mockResolvedValueOnce('media_img_proxy');
+        mockedAxios.mockResolvedValueOnce({ data: { ok: true } } as any);
+
+        await sendBySession(
+            { clientId: 'id', clientSecret: 'sec', robotCode: 'id', bypassProxyForSend: true } as any,
+            'https://session.webhook',
+            'ignored text',
+            { mediaPath: '/tmp/a.png', mediaType: 'image' }
+        );
+
+        const req = mockedAxios.mock.calls[0]?.[0] as any;
+        expect(req.proxy).toBe(false);
     });
 
     it('sendProactiveMedia returns upload failure when media upload fails', async () => {
@@ -144,5 +162,20 @@ describe('send-service media branches', () => {
                 messageType: 'outbound-proactive-media',
             }),
         );
+    });
+
+    it('sendProactiveMedia bypasses proxy when configured', async () => {
+        mockedUploadMedia.mockResolvedValueOnce('media_voice_proxy');
+        mockedAxios.mockResolvedValueOnce({ data: { processQueryKey: 'q_proxy' } } as any);
+
+        await sendProactiveMedia(
+            { clientId: 'id', clientSecret: 'sec', robotCode: 'id', bypassProxyForSend: true } as any,
+            'user_123',
+            '/tmp/a.amr',
+            'voice'
+        );
+
+        const req = mockedAxios.mock.calls[0]?.[0] as any;
+        expect(req.proxy).toBe(false);
     });
 });
