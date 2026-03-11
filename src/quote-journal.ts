@@ -1,5 +1,3 @@
-import * as fs from "node:fs";
-import * as path from "node:path";
 import { readNamespaceJson, writeNamespaceJsonAtomic } from "./persistence-store";
 
 const QUOTE_JOURNAL_NAMESPACE = "quoted.msg-journal";
@@ -19,18 +17,6 @@ type QuoteJournalState = {
   updatedAt: number;
   records: JournalEntry[];
 };
-
-function getLegacyJournalFilePath(params: {
-  storePath: string;
-  accountId: string;
-  conversationId?: string | null;
-}) {
-  const baseDir = path.dirname(params.storePath);
-  const acc = (params.accountId || "default").trim() || "default";
-  const file = `${(params.conversationId || "unknown").trim() || "unknown"}.jsonl`;
-  const dir = path.join(baseDir, "dingtalk-quote-journal", acc);
-  return path.join(dir, file);
-}
 
 function fallbackState(): QuoteJournalState {
   return {
@@ -67,32 +53,6 @@ function normalizeState(parsed: Partial<QuoteJournalState>): QuoteJournalState {
   };
 }
 
-function readLegacyEntries(filePath: string): JournalEntry[] | null {
-  try {
-    if (!fs.existsSync(filePath)) {
-      return null;
-    }
-    const raw = fs.readFileSync(filePath, "utf8");
-    if (!raw.trim()) {
-      return [];
-    }
-    const lines = raw.split(/\r?\n/).filter((line) => line.trim().length > 0);
-    const out: JournalEntry[] = [];
-    for (const line of lines) {
-      try {
-        const entry = normalizeEntry(JSON.parse(line));
-        if (entry) {
-          out.push(entry);
-        }
-      } catch {
-      }
-    }
-    return out;
-  } catch {
-    return null;
-  }
-}
-
 function loadState(params: {
   storePath: string;
   accountId: string;
@@ -105,28 +65,7 @@ function loadState(params: {
     fallback: fallbackState(),
   });
   const normalized = normalizeState(persisted);
-  if (normalized.records.length > 0) {
-    return normalized;
-  }
-
-  const legacyPath = getLegacyJournalFilePath(params);
-  const legacyRecords = readLegacyEntries(legacyPath);
-  if (!legacyRecords || legacyRecords.length === 0) {
-    return normalized;
-  }
-
-  const migrated: QuoteJournalState = {
-    version: QUOTE_JOURNAL_VERSION,
-    updatedAt: Date.now(),
-    records: legacyRecords,
-  };
-  writeNamespaceJsonAtomic(QUOTE_JOURNAL_NAMESPACE, {
-    storePath: params.storePath,
-    scope: { accountId: params.accountId, conversationId: params.conversationId || undefined },
-    format: "json",
-    data: migrated,
-  });
-  return migrated;
+  return normalized;
 }
 
 function writeState(params: {

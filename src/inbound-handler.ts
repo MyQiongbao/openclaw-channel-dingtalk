@@ -213,15 +213,15 @@ export async function handleDingTalkMessage(params: HandleDingTalkMessageParams)
     return;
   }
 
-  let content = extractMessageContent(data);
-  if (!content.text) {
+  const extractedContent = extractMessageContent(data);
+  if (!extractedContent.text) {
     return;
   }
 
   const isDirect = data.conversationType === "1";
   const senderOriginalId = (data.senderId || "").trim();
   const senderStaffId = (data.senderStaffId || "").trim();
-  const senderId = senderOriginalId || senderStaffId;
+  const senderId = senderStaffId || senderOriginalId;
   const senderName = data.senderNick || "Unknown";
   const groupId = data.conversationId;
   const groupName = data.conversationTitle || "Group";
@@ -390,11 +390,12 @@ export async function handleDingTalkMessage(params: HandleDingTalkMessageParams)
   }
 
   const hasConcreteQuotedPayload =
-    !!content.quoted?.mediaDownloadCode ||
-    !!content.quoted?.isQuotedFile ||
-    !!content.quoted?.isQuotedCard ||
-    content.quoted?.prefix.startsWith('[引用消息: "') === true;
+    !!extractedContent.quoted?.mediaDownloadCode ||
+    !!extractedContent.quoted?.isQuotedFile ||
+    !!extractedContent.quoted?.isQuotedCard ||
+    extractedContent.quoted?.prefix.startsWith('[引用消息: "') === true;
   const journalTTLDays = dingtalkConfig.journalTTLDays ?? DEFAULT_JOURNAL_TTL_DAYS;
+  let resolvedContent = extractedContent;
 
   // Journal-based quoted text resolution when only originalMsgId is present
   if (data.text?.isReplyMsg && data.originalMsgId && !hasConcreteQuotedPayload) {
@@ -407,8 +408,14 @@ export async function handleDingTalkMessage(params: HandleDingTalkMessageParams)
         ttlDays: journalTTLDays,
       });
       if (quoted?.text?.trim()) {
-        const cleanedText = content.text.replace(/^\[这是一条引用消息，原消息ID: [^\]]+\]\n\n/, "");
-        content = { ...content, text: `[引用消息: "${quoted.text.trim()}"]\n\n${cleanedText}` };
+        const cleanedText = extractedContent.text.replace(
+          /^\[这是一条引用消息，原消息ID: [^\]]+\]\n\n/,
+          "",
+        );
+        resolvedContent = {
+          ...extractedContent,
+          text: `[引用消息: "${quoted.text.trim()}"]\n\n${cleanedText}`,
+        };
       }
     } catch (err) {
       log?.debug?.(`[DingTalk] Quote journal lookup failed: ${String(err)}`);
@@ -421,15 +428,16 @@ export async function handleDingTalkMessage(params: HandleDingTalkMessageParams)
       accountId,
       conversationId: groupId,
       msgId: data.msgId,
-      messageType: content.messageType,
-      text: stripQuotedPrefixForJournal(content.text),
+      messageType: resolvedContent.messageType,
+      text: stripQuotedPrefixForJournal(resolvedContent.text),
       createdAt: data.createAt,
       ttlDays: journalTTLDays,
     });
   } catch (err) {
-    log?.debug?.(`[DingTalk] Quote journal append failed: ${String(err)}`);
+    log?.warn?.(`[DingTalk] Quote journal append failed: ${String(err)}`);
   }
 
+  const content = resolvedContent;
   let mediaPath: string | undefined;
   let mediaType: string | undefined;
   if (content.mediaPath && dingtalkConfig.robotCode) {

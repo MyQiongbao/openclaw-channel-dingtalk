@@ -43,7 +43,18 @@ function extractOutboundMessageId(payload: unknown): string | undefined {
     return undefined;
   }
   const data = payload as Record<string, unknown>;
-  const value = data.processQueryKey ?? data.messageId ?? data.msgid;
+  const tracking =
+    data.tracking && typeof data.tracking === "object"
+      ? (data.tracking as Record<string, unknown>)
+      : undefined;
+  const value =
+    data.processQueryKey ??
+    data.messageId ??
+    data.msgid ??
+    tracking?.processQueryKey ??
+    tracking?.messageId ??
+    tracking?.msgid ??
+    tracking?.outTrackId;
   return typeof value === "string" && value.trim() ? value.trim() : undefined;
 }
 
@@ -496,7 +507,7 @@ export async function sendMessage(
       });
     }
     if (isTrackingResult(result)) {
-      return { ok: true, tracking: result.tracking, messageId };
+      return { ok: true, tracking: result.tracking };
     }
     return { ok: true, data: result, messageId };
   } catch (err: any) {

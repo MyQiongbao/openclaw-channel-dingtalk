@@ -164,7 +164,7 @@ describe('quote-journal', () => {
     expect(newHit?.text).toBe('new entry');
   });
 
-  it('migrates legacy JSONL data into persistence namespace on first read', async () => {
+  it('ignores legacy JSONL data and only reads persistence-backed journal state', async () => {
     const storePath = storePathInTemp();
     const legacyDir = path.join(path.dirname(storePath), 'dingtalk-quote-journal', 'main');
     const legacyPath = path.join(legacyDir, 'cid_1.jsonl');
@@ -184,14 +184,14 @@ describe('quote-journal', () => {
       nowMs: 12345,
     });
 
-    expect(hit?.text).toBe('legacy text');
+    expect(hit).toBeNull();
 
     const persistedFile = resolveNamespacePath('quoted.msg-journal', {
       storePath,
       scope: { accountId: 'main', conversationId: 'cid_1' },
       format: 'json',
     });
-    expect(fs.existsSync(persistedFile)).toBe(true);
+    expect(fs.existsSync(persistedFile)).toBe(false);
   });
 
   it('caps journal records per scope and evicts oldest entries', async () => {

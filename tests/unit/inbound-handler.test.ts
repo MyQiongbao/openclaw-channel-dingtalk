@@ -287,6 +287,38 @@ describe("inbound-handler", () => {
     expect(shared.sendBySessionMock.mock.calls[0]?.[2]).toContain("访问受限");
   });
 
+  it("handleDingTalkMessage prefers senderStaffId for DM allowlist and routing", async () => {
+    const runtime = buildRuntime();
+    shared.getRuntimeMock.mockReturnValueOnce(runtime);
+
+    await handleDingTalkMessage({
+      cfg: {},
+      accountId: "main",
+      sessionWebhook: "https://session.webhook",
+      log: undefined,
+      dingtalkConfig: { dmPolicy: "allowlist", allowFrom: ["staff_allowed"] } as any,
+      data: {
+        msgId: "m2_staff",
+        msgtype: "text",
+        text: { content: "hello" },
+        conversationType: "1",
+        conversationId: "cid1",
+        senderId: "user_blocked",
+        senderStaffId: "staff_allowed",
+        chatbotUserId: "bot_1",
+        sessionWebhook: "https://session.webhook",
+        createAt: Date.now(),
+      },
+    } as any);
+
+    expect(shared.sendBySessionMock).not.toHaveBeenCalled();
+    expect(runtime.channel.routing.resolveAgentRoute).toHaveBeenCalledWith(
+      expect.objectContaining({
+        peer: { kind: "direct", id: "staff_allowed" },
+      }),
+    );
+  });
+
   it("handleDingTalkMessage sends group deny message when groupPolicy allowlist blocks group", async () => {
     await handleDingTalkMessage({
       cfg: {},

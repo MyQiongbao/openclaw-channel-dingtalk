@@ -99,6 +99,37 @@ describe('send-service advanced branches', () => {
         });
     });
 
+    it('journals proactive card sends using tracking metadata when storePath is provided', async () => {
+        cardServiceMocks.sendProactiveCardTextMock.mockResolvedValueOnce({
+            ok: true,
+            outTrackId: 'track_card_real_2',
+            processQueryKey: 'card_process_real_2',
+            cardInstanceId: 'card_instance_real_2',
+        });
+
+        await sendMessage(
+            { clientId: 'id', clientSecret: 'sec', robotCode: 'id', messageType: 'card', cardTemplateId: 'tmpl' } as any,
+            'manager123',
+            'card proactive text',
+            {
+                accountId: 'main',
+                storePath: '/tmp/sessions.json',
+                conversationId: 'cid_dm_stable',
+            } as any,
+        );
+
+        expect(quoteJournalMocks.appendProactiveOutboundJournalMock).toHaveBeenCalledWith(
+            expect.objectContaining({
+                storePath: '/tmp/sessions.json',
+                accountId: 'main',
+                conversationId: 'cid_dm_stable',
+                messageId: 'card_process_real_2',
+                messageType: 'outbound-proactive',
+                text: 'card proactive text',
+            }),
+        );
+    });
+
     it('returns {ok:false} when proactive send throws', async () => {
         mockedAxios.mockRejectedValueOnce({
             message: 'network failed',
