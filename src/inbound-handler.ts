@@ -1030,6 +1030,187 @@ export async function handleDingTalkMessage(params: HandleDingTalkMessageParams)
       }
     }
 
+    // ── Real-time progress notifications ──────────────────────────────────────
+    // Send tool-execution progress to the user during long-running agent tasks.
+    // Uses rt.events.onAgentEvent (global event bus) since replyOptions.onAgentEvent
+    // is not reliably called for all model providers (e.g. Doubao/volcengine).
+
+    const taskStartedAt = Date.now();
+    let lastProgressSentAt = taskStartedAt;
+
+    /** Fire-and-forget helper: send a progress message without blocking dispatch. */
+    const sendProgressAsync = (text: string): void => {
+      lastProgressSentAt = Date.now();
+      log?.info?.(`[DingTalk] Sending progress: ${text.slice(0, 80)}`);
+      sendMessage(dingtalkConfig, to, text, {
+        sessionWebhook: sessionWebhook ?? undefined,
+        atUserId: null,
+        log,
+      })
+        .then((result) => {
+          log?.info?.(`[DingTalk] Progress sent: ok=${result.ok} error=${result.error ?? "none"}`);
+        })
+        .catch((err: any) => {
+          log?.warn?.(`[DingTalk] Progress notification failed: ${err.message}`);
+        });
+    };
+
+    /** Build a human-readable label from a tool name and its arguments. */
+    const buildToolLabel = (toolName: string, args: Record<string, unknown>): string => {
+      const str = (v: unknown, max = 60): string => String(v ?? "").slice(0, max).trim();
+      const basename = (p: string): string => p.replace(/\\/g, "/").split("/").pop() ?? p;
+      switch (toolName) {
+        case "bash":
+        case "exec": {
+          const cmd = str(args?.command ?? args?.cmd ?? args?.input, 120).trim();
+          if (!cmd) return "⚡ 运行命令";
+          const brewInstall = cmd.match(/brew\s+install\s+([\w@.-]+)/);
+          if (brewInstall) return `📦 安装 ${brewInstall[1]}`;
+          const pipInstall = cmd.match(/pip3?\s+install\s+([\w@.,-]+)/);
+          if (pipInstall) return `📦 安装 Python 包 ${pipInstall[1]}`;
+          const npmInstall = cmd.match(/npm\s+install\s+([\w@./-]+)?/);
+          if (npmInstall) return npmInstall[1] ? `📦 安装 ${npmInstall[1]}` : "📦 安装 npm 依赖";
+          const which = cmd.match(/^which\s+([\w.-]+)/);
+          if (which) return `🔍 检查 ${which[1]} 是否已安装`;
+          const version = cmd.match(/^([\w.-]+)\s+--version/);
+          if (version) return `🔍 检查 ${version[1]} 版本`;
+          const curlWget = cmd.match(/^(?:curl|wget)\s+.*?(https?:\/\/[^\s]+)/);
+          if (curlWget) {
+            try {
+              return `🌐 下载 ${new URL(curlWget[1]).hostname}`;
+            } catch {}
+          }
+          const pythonRun = cmd.match(/^python3?\s+([\w./-]+\.py)/);
+          if (pythonRun) return `🐍 运行 ${pythonRun[1].split("/").pop()}`;
+          const gitClone = cmd.match(/^git\s+clone\s+.*?([\w.-]+(?:\.git)?)\s*$/);
+          if (gitClone) return `📥 克隆 ${gitClone[1].replace(/\.git$/, "")}`;
+          return `⚡ \`${cmd.slice(0, 60)}${cmd.length > 60 ? "…" : ""}\``;
+        }
+        case "read": {
+          const p = str(args?.path ?? args?.file_path ?? args?.filePath);
+          return p ? `📂 读取 ${basename(p)}` : "📂 读文件";
+        }
+        case "edit": {
+          const p = str(args?.path ?? args?.file_path ?? args?.filePath);
+          return p ? `✏️ 编辑 ${basename(p)}` : "✏️ 改文件";
+        }
+        case "write": {
+          const p = str(args?.path ?? args?.file_path ?? args?.filePath);
+          return p ? `📝 写入 ${basename(p)}` : "📝 写文件";
+        }
+        case "grep": {
+          const q = str(args?.pattern ?? args?.query ?? args?.keyword);
+          return q ? `🔍 搜索 \`${q}\`` : "🔍 搜索内容";
+        }
+        case "glob": {
+          const q = str(args?.pattern ?? args?.glob);
+          return q ? `🔍 查找 ${q}` : "🔍 查找文件";
+        }
+        case "web_search":
+        case "tavily_search": {
+          const q = str(args?.query ?? args?.q);
+          return q ? `🌐 搜索「${q}」` : "🌐 网页搜索";
+        }
+        case "web_fetch":
+        case "tavily_extract":
+        case "tavily_crawl": {
+          const url = str(args?.url ?? args?.urls ?? args?.href);
+          if (url) {
+            try {
+              return `🌐 读取 ${new URL(url).hostname}`;
+            } catch {}
+          }
+          return toolName === "tavily_crawl" ? "🌐 抓取网站" : "🌐 读取网页";
+        }
+        case "tavily_map":
+          return "🌐 探索网站";
+        case "tavily_research": {
+          const q = str(args?.query ?? args?.topic);
+          return q ? `🔬 深度搜索「${q}」` : "🔬 深度搜索";
+        }
+        case "task": {
+          const desc = str(args?.description ?? args?.prompt ?? args?.message, 50);
+          return desc ? `🔀 子任务：${desc}` : "🔀 子任务";
+        }
+        case "process": {
+          const action = str(args?.action ?? args?.type ?? args?.operation ?? args?.task);
+          const target = str(args?.input ?? args?.file ?? args?.data ?? args?.content, 40);
+          if (action) return `处理中：${action}${target ? `（${target}）` : ""}`;
+          return target ? `处理：${target}` : "处理数据";
+        }
+        case "computer":
+          return "🖥️ 操作电脑";
+        case "screenshot":
+          return "📸 截图";
+        case "image": {
+          const action = str(args?.action ?? args?.operation ?? args?.type);
+          return action ? `🖼️ 图片处理：${action}` : "🖼️ 处理图片";
+        }
+        default:
+          log?.info?.(`[DingTalk] Unknown tool "${toolName}" args: ${JSON.stringify(args).slice(0, 200)}`);
+          return `🔧 ${toolName}`;
+      }
+    };
+
+    /** Extract the last meaningful sentence from accumulated assistant text (≤60 chars). */
+    const extractAssistantSnippet = (text: string): string => {
+      const cleaned = text.replace(/\s+/g, " ").trim();
+      if (!cleaned) return "";
+      const sentences = cleaned.split(/[。！？\n]+/).map((s) => s.trim()).filter(Boolean);
+      const last = sentences[sentences.length - 1] ?? "";
+      return last.length > 5 ? last.slice(0, 60) : cleaned.slice(-60).trim();
+    };
+
+    // Heartbeat: send a progress message every 60s if no other progress was sent.
+    const heartbeatInterval = setInterval(() => {
+      const elapsedSec = Math.round((Date.now() - taskStartedAt) / 1000);
+      const idleSec = (Date.now() - lastProgressSentAt) / 1000;
+      if (idleSec >= 55) {
+        sendProgressAsync(`⏳ 处理中，已用时约 ${elapsedSec} 秒...`);
+      }
+    }, 60000);
+
+    // Subscribe to agent events to get real-time tool execution notifications.
+    // rt.events.onAgentEvent shares the same listener set as emitAgentEvent inside
+    // handleToolExecutionStart (same plugin-sdk bundle), so we receive events directly.
+    let capturedRunId: string | null = null;
+    let lastToolCallId: string | null = null;
+    let assistantContext = "";
+    const unsubscribeAgentEvents = rt.events.onAgentEvent((event: any) => {
+      // Capture runId from the first lifecycle "start" event (belongs to this dispatch).
+      if (!capturedRunId && event.stream === "lifecycle" && event.data?.phase === "start") {
+        capturedRunId = event.runId as string;
+        return;
+      }
+      if (!capturedRunId || event.runId !== capturedRunId) return;
+
+      // Accumulate assistant text (model's explanation before tool calls).
+      if (event.stream === "assistant") {
+        const delta = (event.data?.delta ?? "") as string;
+        if (delta) {
+          assistantContext += delta;
+          if (assistantContext.length > 300) assistantContext = assistantContext.slice(-300);
+        }
+        return;
+      }
+
+      if (event.stream !== "tool" || event.data?.phase !== "start") return;
+      const toolCallId = (event.data?.toolCallId ?? "") as string;
+      if (toolCallId && toolCallId === lastToolCallId) return;
+      lastToolCallId = toolCallId || null;
+
+      const toolName = (event.data?.name ?? "") as string;
+      const args = (event.data?.args ?? {}) as Record<string, unknown>;
+
+      // Prefer the model's own explanation; fall back to tool label.
+      const snippet = extractAssistantSnippet(assistantContext);
+      assistantContext = "";
+      const label = snippet || buildToolLabel(toolName, args);
+      log?.info?.(`[DingTalk] Tool started: ${toolName} | label="${label}"`);
+      sendProgressAsync(`⚙️ ${label}`);
+    });
+    // ─────────────────────────────────────────────────────────────────────────
+
     let queuedFinal: unknown;
     try {
       const dispatchResult = await rt.channel.reply.dispatchReplyWithBufferedBlockDispatcher({
@@ -1137,7 +1318,11 @@ export async function handleDingTalkMessage(params: HandleDingTalkMessageParams)
         },
       });
       queuedFinal = dispatchResult?.queuedFinal;
+      clearInterval(heartbeatInterval);
+      unsubscribeAgentEvents();
     } catch (dispatchErr: any) {
+      clearInterval(heartbeatInterval);
+      unsubscribeAgentEvents();
       if (useCardMode && currentAICard && !isCardInTerminalState(currentAICard.state)) {
         try {
           await finishAICard(currentAICard, "❌ 处理失败", log);
