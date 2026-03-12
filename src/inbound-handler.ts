@@ -1176,6 +1176,9 @@ export async function handleDingTalkMessage(params: HandleDingTalkMessageParams)
     let capturedRunId: string | null = null;
     let lastToolCallId: string | null = null;
     let assistantContext = "";
+    // Track assistant preamble texts already sent as progress notifications,
+    // so we can skip them when the framework re-delivers them as kind=final chunks.
+    const alreadySentSnippets: string[] = [];
     const unsubscribeAgentEvents = rt.events.onAgentEvent((event: any) => {
       // Capture runId from the first lifecycle "start" event (belongs to this dispatch).
       if (!capturedRunId && event.stream === "lifecycle" && event.data?.phase === "start") {
@@ -1205,6 +1208,11 @@ export async function handleDingTalkMessage(params: HandleDingTalkMessageParams)
       // Prefer the model's own explanation; fall back to tool label.
       const snippet = extractAssistantSnippet(assistantContext);
       assistantContext = "";
+      // Remember the snippet: the framework will deliver the same text again as
+      // kind=final, and we need to skip it in the deliver callback.
+      if (snippet) {
+        alreadySentSnippets.push(snippet.trim().replace(/[。.!！？?]+$/, ""));
+      }
       const label = snippet || buildToolLabel(toolName, args);
       log?.info?.(`[DingTalk] Tool started: ${toolName} | label="${label}"`);
       sendProgressAsync(`⚙️ ${label}`);
@@ -1268,6 +1276,19 @@ export async function handleDingTalkMessage(params: HandleDingTalkMessageParams)
               if (info.kind === "tool") {
                 log?.debug?.(
                   `[DingTalk] deliver skipped (tool summary, non-card): textLen=${textToSend.length}`,
+                );
+                return;
+              }
+
+              // Skip text that was already sent as a progress notification (assistant
+              // preamble before a tool call). The framework re-delivers it as kind=final.
+              const textNorm = textToSend.trim().replace(/[。.!！？?]+$/, "");
+              const alreadyShown = alreadySentSnippets.some(
+                (s) => textNorm === s || textNorm.startsWith(s) || s.startsWith(textNorm),
+              );
+              if (alreadyShown) {
+                log?.debug?.(
+                  `[DingTalk] deliver skipped (already shown as progress): textLen=${textToSend.length}`,
                 );
                 return;
               }
