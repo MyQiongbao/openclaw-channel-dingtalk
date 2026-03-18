@@ -1553,6 +1553,19 @@ export async function handleDingTalkMessage(params: HandleDingTalkMessageParams)
           `preview="${finalText.slice(0, 120)}"`,
         );
         await finishAICard(currentAICard, finalText, log);
+
+        // In group chats, send a lightweight @mention via session webhook
+        // so the sender gets a notification — card API doesn't support @mention.
+        if (!isDirect && senderId && sessionWebhook && dingtalkConfig.cardAtSender) {
+          try {
+            await sendBySession(dingtalkConfig, sessionWebhook, `@${senderId}`, {
+              atUserId: senderId,
+              log,
+            });
+          } catch (atErr: any) {
+            log?.debug?.(`[DingTalk] Post-card @mention send failed: ${atErr.message}`);
+          }
+        }
       } catch (err: any) {
         log?.debug?.(`[DingTalk] AI Card finalization failed: ${err.message}`);
         if (err?.response?.data !== undefined) {
