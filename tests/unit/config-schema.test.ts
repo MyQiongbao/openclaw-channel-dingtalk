@@ -69,29 +69,6 @@ describe('DingTalkConfigSchema', () => {
         expect(parsed.accounts.main?.mediaUrlAllowlist).toEqual(['192.168.1.23', 'files.internal.example']);
     });
 
-    it('defaults displayNameResolution to disabled', () => {
-        const parsed = DingTalkConfigSchema.parse({
-            clientId: 'id',
-            clientSecret: 'secret',
-        }) as { displayNameResolution?: string };
-
-        expect(parsed.displayNameResolution).toBe('disabled');
-    });
-
-    it('accepts displayNameResolution for account config', () => {
-        const parsed = DingTalkConfigSchema.parse({
-            accounts: {
-                main: {
-                    clientId: 'id',
-                    clientSecret: 'secret',
-                    displayNameResolution: 'all',
-                },
-            },
-        }) as { accounts: Record<string, { displayNameResolution?: string }> };
-
-        expect(parsed.accounts.main?.displayNameResolution).toBe('all');
-    });
-
     it('keeps keepAlive undefined when omitted', () => {
         const parsed = DingTalkConfigSchema.parse({
             clientId: 'id',
@@ -166,14 +143,14 @@ describe('DingTalkConfigSchema', () => {
         expect(parsed.feedbackLearningNoteTtlMs).toBe(120000);
     });
 
-    it('accepts ackReaction config without injecting a schema default', () => {
+    it('accepts enum ackReaction config without injecting a schema default', () => {
         const parsed = DingTalkConfigSchema.parse({
             clientId: 'id',
             clientSecret: 'secret',
-            ackReaction: '✅',
+            ackReaction: 'kaomoji',
         }) as { ackReaction?: string };
 
-        expect(parsed.ackReaction).toBe('✅');
+        expect(parsed.ackReaction).toBe('kaomoji');
 
         const defaults = DingTalkConfigSchema.parse({
             clientId: 'id',
@@ -181,6 +158,24 @@ describe('DingTalkConfigSchema', () => {
         }) as { ackReaction?: string };
 
         expect(defaults.ackReaction).toBeUndefined();
+    });
+
+    it('accepts legacy string ackReaction config for backward compatibility', () => {
+        const parsed = DingTalkConfigSchema.parse({
+            clientId: 'id',
+            clientSecret: 'secret',
+            ackReaction: '👀',
+            accounts: {
+                main: {
+                    clientId: 'id',
+                    clientSecret: 'secret',
+                    ackReaction: '🤔思考中',
+                },
+            },
+        }) as { ackReaction?: string; accounts: Record<string, { ackReaction?: string }> };
+
+        expect(parsed.ackReaction).toBe('👀');
+        expect(parsed.accounts.main?.ackReaction).toBe('🤔思考中');
     });
 
     it('exports control-ui-compatible JSON schema nodes', () => {

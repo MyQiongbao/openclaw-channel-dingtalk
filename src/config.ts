@@ -158,15 +158,28 @@ function hasOwn(obj: unknown, key: string): boolean {
   return typeof obj === "object" && obj !== null && Object.prototype.hasOwnProperty.call(obj, key);
 }
 
-function resolveAgentIdentityEmoji(cfg: OpenClawConfig, agentId?: string | null): string | undefined {
-  const targetAgentId = String(agentId || "").trim();
-  if (!targetAgentId) {
+function normalizeAckReactionValue(value: unknown): string | undefined {
+  if (typeof value !== "string") {
     return undefined;
   }
-  const agents = Array.isArray((cfg as any)?.agents?.list) ? (cfg as any).agents.list : [];
-  const agent = agents.find((entry: any) => String(entry?.id || "").trim() === targetAgentId);
-  const emoji = typeof agent?.identity?.emoji === "string" ? agent.identity.emoji.trim() : "";
-  return emoji || undefined;
+  const trimmed = value.trim();
+  if (!trimmed) {
+    return "off";
+  }
+  const normalized = trimmed.toLowerCase();
+  if (normalized === "off") {
+    return "off";
+  }
+  if (normalized === "emoji") {
+    return "emoji";
+  }
+  if (normalized === "kaomoji") {
+    return "kaomoji";
+  }
+  if (trimmed === "🤔思考中") {
+    return "emoji";
+  }
+  return trimmed;
 }
 
 export function resolveAckReactionSetting(params: {
@@ -182,18 +195,18 @@ export function resolveAckReactionSetting(params: {
       : undefined;
 
   if (hasOwn(accountConfig, "ackReaction")) {
-    return typeof accountConfig.ackReaction === "string" ? accountConfig.ackReaction.trim() : "";
+    return normalizeAckReactionValue(accountConfig.ackReaction);
   }
   if (hasOwn(dingtalk, "ackReaction")) {
-    return typeof dingtalk.ackReaction === "string" ? dingtalk.ackReaction.trim() : "";
+    return normalizeAckReactionValue(dingtalk.ackReaction);
   }
 
   const messages = (params.cfg as any)?.messages;
   if (hasOwn(messages, "ackReaction")) {
-    return typeof messages.ackReaction === "string" ? messages.ackReaction.trim() : "";
+    return normalizeAckReactionValue(messages.ackReaction);
   }
 
-  return resolveAgentIdentityEmoji(params.cfg, params.agentId) || "👀";
+  return "emoji";
 }
 
 /**
