@@ -770,6 +770,7 @@ export function resolveDingTalkAccount(
       dmPolicy: dingtalk?.dmPolicy,
       groupPolicy: dingtalk?.groupPolicy,
       allowFrom: dingtalk?.allowFrom,
+      displayNameResolution: dingtalk?.displayNameResolution,
       journalTTLDays: dingtalk?.journalTTLDays,
       ackReaction: dingtalk?.ackReaction,
       debug: dingtalk?.debug,

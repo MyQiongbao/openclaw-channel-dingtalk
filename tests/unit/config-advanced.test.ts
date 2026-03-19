@@ -175,7 +175,7 @@ describe('config advanced', () => {
             } as any,
             accountId: 'main',
             agentId: 'main',
-        })).toBe('off');
+        })).toBe('');
 
         expect(resolveAckReactionSetting({
             cfg: {
@@ -206,7 +206,7 @@ describe('config advanced', () => {
             } as any,
             accountId: 'main',
             agentId: 'main',
-        })).toBe('emoji');
+        })).toBe('👀');
 
         expect(resolveAckReactionSetting({
             cfg: {
@@ -224,7 +224,7 @@ describe('config advanced', () => {
             cfg: {} as any,
             accountId: 'main',
             agentId: 'main',
-        })).toBe('emoji');
+        })).toBe('👀');
     });
 
     it('normalizes legacy learning keys in single-account config', () => {

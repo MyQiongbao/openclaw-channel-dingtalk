@@ -158,13 +158,24 @@ function hasOwn(obj: unknown, key: string): boolean {
   return typeof obj === "object" && obj !== null && Object.prototype.hasOwnProperty.call(obj, key);
 }
 
+function resolveAgentIdentityEmoji(cfg: OpenClawConfig, agentId?: string | null): string | undefined {
+  const targetAgentId = String(agentId || "").trim();
+  if (!targetAgentId) {
+    return undefined;
+  }
+  const agents = Array.isArray((cfg as any)?.agents?.list) ? (cfg as any).agents.list : [];
+  const agent = agents.find((entry: any) => String(entry?.id || "").trim() === targetAgentId);
+  const emoji = typeof agent?.identity?.emoji === "string" ? agent.identity.emoji.trim() : "";
+  return emoji || undefined;
+}
+
 function normalizeAckReactionValue(value: unknown): string | undefined {
   if (typeof value !== "string") {
     return undefined;
   }
   const trimmed = value.trim();
   if (!trimmed) {
-    return "off";
+    return "";
   }
   const normalized = trimmed.toLowerCase();
   if (normalized === "off") {
@@ -206,7 +217,7 @@ export function resolveAckReactionSetting(params: {
     return normalizeAckReactionValue(messages.ackReaction);
   }
 
-  return "emoji";
+  return resolveAgentIdentityEmoji(params.cfg, params.agentId) || "👀";
 }
 
 /**
