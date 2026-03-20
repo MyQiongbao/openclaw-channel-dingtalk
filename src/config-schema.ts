@@ -1,7 +1,11 @@
 import { z } from "zod";
 import { DEFAULT_MESSAGE_CONTEXT_TTL_DAYS } from "./message-context-store";
 
-const AckReactionSchema = z.union([z.enum(["off", "emoji", "kaomoji"]), z.string().min(1)]);
+const AckReactionSchema = z.union([
+  z.literal(""),
+  z.enum(["off", "emoji", "kaomoji"]),
+  z.string().min(1),
+]);
 
 const DingTalkAccountConfigShape = {
   /** Account name (optional display name) */

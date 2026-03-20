@@ -201,6 +201,24 @@ describe('DingTalkConfigSchema', () => {
         expect(parsed.accounts.main?.ackReaction).toBe('🤔思考中');
     });
 
+    it('accepts empty-string ackReaction config for backward compatibility', () => {
+        const parsed = DingTalkConfigSchema.parse({
+            clientId: 'id',
+            clientSecret: 'secret',
+            ackReaction: '',
+            accounts: {
+                main: {
+                    clientId: 'id',
+                    clientSecret: 'secret',
+                    ackReaction: '',
+                },
+            },
+        }) as { ackReaction?: string; accounts: Record<string, { ackReaction?: string }> };
+
+        expect(parsed.ackReaction).toBe('');
+        expect(parsed.accounts.main?.ackReaction).toBe('');
+    });
+
     it('exports control-ui-compatible JSON schema nodes', () => {
         const jsonSchema = DingTalkConfigSchema.toJSONSchema({
             target: 'draft-07',
