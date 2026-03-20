@@ -83,6 +83,7 @@ import { formatDingTalkErrorPayloadLog, getErrorMessage, getErrorResponseData, m
 
 const DEFAULT_PROACTIVE_HINT_COOLDOWN_HOURS = 24;
 const MIN_THINKING_REACTION_VISIBLE_MS = 1200;
+const MAX_DYNAMIC_ACK_DISPOSE_WAIT_MS = 500;
 const ATTACHMENT_TEXT_PREFIX = "[附件内容摘录]";
 const proactiveHintLastSentAt = new Map<string, number>();
 
@@ -91,6 +92,42 @@ function ttlDaysToMs(ttlDays: number | undefined): number | undefined {
     return undefined;
   }
   return ttlDays * 24 * 60 * 60 * 1000;
+}
+
+async function waitForDynamicAckDispose(params: {
+  dispose: () => Promise<void>;
+  log?: { debug?: (message: string) => void; warn?: (message: string) => void };
+  sessionKey: string;
+}): Promise<void> {
+  let timedOut = false;
+  let timeoutHandle: ReturnType<typeof setTimeout> | undefined;
+  const disposePromise = params.dispose().catch((err: unknown) => {
+    params.log?.warn?.(
+      `[DingTalk] Dynamic ack reaction cleanup failed for session ${params.sessionKey}: ${getErrorMessage(err)}`,
+    );
+  });
+
+  try {
+    await Promise.race([
+      disposePromise,
+      new Promise<void>((resolve) => {
+        timeoutHandle = setTimeout(() => {
+          timedOut = true;
+          resolve();
+        }, MAX_DYNAMIC_ACK_DISPOSE_WAIT_MS);
+      }),
+    ]);
+  } finally {
+    if (timeoutHandle) {
+      clearTimeout(timeoutHandle);
+    }
+  }
+
+  if (timedOut) {
+    params.log?.debug?.(
+      `[DingTalk] Dynamic ack reaction cleanup timed out after ${MAX_DYNAMIC_ACK_DISPOSE_WAIT_MS}ms; releasing session lock for ${params.sessionKey}`,
+    );
+  }
 }
 
 export function resetProactivePermissionHintStateForTest(): void {
@@ -1596,7 +1633,11 @@ export async function handleDingTalkMessage(params: HandleDingTalkMessageParams)
 
     await strategy.finalize();
   } finally {
-    await dynamicAckReactionController.dispose(MIN_THINKING_REACTION_VISIBLE_MS);
+    await waitForDynamicAckDispose({
+      dispose: () => dynamicAckReactionController.dispose(MIN_THINKING_REACTION_VISIBLE_MS),
+      log,
+      sessionKey: route.sessionKey,
+    });
     releaseSessionLock();
   }
 }

@@ -2946,9 +2946,67 @@ describe("inbound-handler", () => {
       expect(mockedAxiosPost.mock.invocationCallOrder[0]).toBeLessThan(
         shared.acquireSessionLockMock.mock.invocationCallOrder[0],
       );
-      expect(releaseFn.mock.invocationCallOrder[0]).toBeLessThan(
-        mockedAxiosPost.mock.invocationCallOrder[1],
+      expect(mockedAxiosPost.mock.invocationCallOrder[1]).toBeLessThan(
+        releaseFn.mock.invocationCallOrder[0],
       );
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("releases session lock after a bounded wait when dynamic ack cleanup stalls", async () => {
+    vi.useFakeTimers();
+    const releaseFn = vi.fn();
+    const debugLog = vi.fn();
+    let resolveRecall: (() => void) | undefined;
+    shared.acquireSessionLockMock.mockResolvedValueOnce(releaseFn);
+    mockedAxiosPost
+      .mockResolvedValueOnce({ data: { success: true } } as any)
+      .mockImplementationOnce(
+        () => new Promise<void>((resolve) => {
+          resolveRecall = resolve;
+        }),
+      );
+
+    try {
+      const handlePromise = handleDingTalkMessage({
+        cfg: {},
+        accountId: "main",
+        sessionWebhook: "https://session.webhook",
+        log: { debug: debugLog, warn: vi.fn(), error: vi.fn(), info: vi.fn() } as any,
+        dingtalkConfig: {
+          clientId: "ding_client",
+          clientSecret: "secret",
+          dmPolicy: "open",
+          messageType: "markdown",
+          ackReaction: "🤔思考中",
+        } as any,
+        data: {
+          msgId: "m5_cleanup_timeout",
+          msgtype: "text",
+          text: { content: "hello" },
+          conversationType: "1",
+          conversationId: "cid_ok",
+          senderId: "user_1",
+          chatbotUserId: "bot_1",
+          sessionWebhook: "https://session.webhook",
+          createAt: Date.now(),
+        },
+      } as any);
+
+      await vi.advanceTimersByTimeAsync(1700);
+      await handlePromise;
+
+      expect(releaseFn).toHaveBeenCalledTimes(1);
+      expect(
+        debugLog.mock.calls.some(([message]) =>
+          typeof message === "string"
+          && message.includes("Dynamic ack reaction cleanup timed out after 500ms"),
+        ),
+      ).toBe(true);
+
+      resolveRecall?.();
+      await vi.runOnlyPendingTimersAsync();
     } finally {
       vi.useRealTimers();
     }
